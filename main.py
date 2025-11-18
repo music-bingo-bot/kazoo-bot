@@ -62,7 +62,7 @@ def start_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="▶️ Поехали", callback_data="go"),
+                InlineKeyboardButton(text="🚀 Поехали", callback_data="go"),
                 InlineKeyboardButton(text="❓ Помощь", callback_data="help"),
             ]
         ]
@@ -74,17 +74,14 @@ def game_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="⏭ Следующая песня", callback_data="next"
+                    text="⏭️ Следующая песня", callback_data="next"
                 ),
-            ],
-            [
                 InlineKeyboardButton(
-                    text="🔁 Начать сначала", callback_data="restart"
+                    text="❌ Начать сначала", callback_data="restart"
                 ),
-            ],
+            ]
         ]
     )
-
 
 # ---------- Router ----------
 router = Router()
