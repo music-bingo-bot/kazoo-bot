@@ -85,17 +85,19 @@
     </tr>
     {% for b in broadcasts %}
       {% set id = b[0] %}
-      {% set text = b[1] %}
+      {% set text = b[1] or "" %}
       {% set created_at = b[2] %}
       {% set sent_at = b[3] %}
-      {% set title = text.split('\n')[0] if text else '' %}
+
+      {# короткий превью-заголовок — первые 60 символов #}
+      {% set preview = text[:60] %}
       <tr>
         <td>#{{ id }}</td>
         <td>
-          <strong>{{ title }}</strong><br>
-          <span class="muted">
-            {{ text|replace('\n', ' ')[:120] }}{% if text|length > 120 %}…{% endif %}
-          </span>
+          <strong>{{ preview }}</strong>
+          {% if text|length > 60 %}
+            <span class="muted">…</span>
+          {% endif %}
         </td>
         <td class="muted">{{ created_at }}</td>
         <td>
