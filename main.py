@@ -187,7 +187,7 @@ async def cb_game(cb: CallbackQuery):
     await cb.answer()
 
 
-@router.callback_query(F.data == "restart_all"))
+@router.callback_query(F.data == "restart_all")
 async def cb_restart_all(cb: CallbackQuery):
     """
     Обработчик кнопки 'Начнем заново?' после того,
