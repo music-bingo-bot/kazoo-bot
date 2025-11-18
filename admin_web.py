@@ -75,14 +75,20 @@ def create_app(bot: Bot) -> FastAPI:
         return RedirectResponse("/admin_web/login", status_code=HTTP_303_SEE_OTHER)
 
     # ---------- Tracks ----------
-    @app.get("/admin_web", response_class=HTMLResponse)
-    async def index(request: Request):
-        await ensure_admin(request)
-        tracks = await list_tracks()
-        return TEMPLATES.TemplateResponse(
-            "index.html",
-            {"request": request, "tracks": tracks},
-        )
+@app.get("/admin_web", response_class=HTMLResponse)
+async def index(request: Request):
+    await require_admin(request)
+    tracks = await list_tracks()
+    restore_status = request.query_params.get("restore")
+
+    return TEMPLATES.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "tracks": tracks,
+            "restore_status": restore_status,
+        },
+    )
 
     @app.post("/admin_web/tracks/new")
     async def add_track(
@@ -197,45 +203,71 @@ def create_app(bot: Bot) -> FastAPI:
         )
 
     # ---------- Backup / Restore ----------
-    @app.get("/admin_web/backup")
-    async def backup(request: Request):
-        await ensure_admin(request)
-        uploads_dir = "uploads"
-        os.makedirs(uploads_dir, exist_ok=True)
+@app.get("/admin_web/backup")
+async def backup(request: Request):
+    await ensure_admin(request)
+    base = "uploads"
+    os.makedirs(base, exist_ok=True)
 
-        fd, tmp_path = tempfile.mkstemp(suffix=".zip")
-        os.close(fd)
+    fd, tmp_path = tempfile.mkstemp(suffix=".zip")
+    os.close(fd)
 
-        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as z:
-            for root_dir, dirs, files in os.walk(uploads_dir):
+    with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        if os.path.isdir(base):
+            for root_dir, _dirs, files in os.walk(base):
                 for name in files:
-                    full_path = os.path.join(root_dir, name)
-                    rel_path = os.path.relpath(full_path, uploads_dir)
-                    z.write(full_path, arcname=os.path.join("uploads", rel_path))
+                    full = os.path.join(root_dir, name)
+                    # в архиве будут пути вида: uploads/...
+                    arc = os.path.relpath(full, start=os.path.dirname(base))
+                    zf.write(full, arcname=arc)
 
-        return FileResponse(
-            tmp_path,
-            filename="kazoo-bot-backup.zip",
-            media_type="application/zip",
+    return FileResponse(
+        tmp_path,
+        filename="backup_uploads.zip",
+        media_type="application/zip",
+    )
+
+@app.post("/admin_web/restore")
+async def restore(request: Request, archive: UploadFile):
+    await ensure_admin(request)
+
+    if not archive or not archive.filename:
+        # не выбрали файл
+        return RedirectResponse(
+            "/admin_web?restore=missing",
+            status_code=HTTP_303_SEE_OTHER,
         )
 
-    @app.post("/admin_web/restore")
-    async def restore(request: Request, archive: UploadFile):
-        await ensure_admin(request)
-        uploads_dir = "uploads"
-        os.makedirs(uploads_dir, exist_ok=True)
+    base = "uploads"
+    os.makedirs(base, exist_ok=True)
 
-        data = await archive.read()
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_zip_path = os.path.join(tmpdir, "archive.zip")
-            with open(tmp_zip_path, "wb") as f:
-                f.write(data)
+    # сохраняем загруженный архив во временный файл
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp_path = tmp.name
+    tmp.close()
 
-            with zipfile.ZipFile(tmp_zip_path, "r") as z:
-                for member in z.namelist():
-                    if member.startswith("uploads/"):
-                        z.extract(member, path=".")
-        return RedirectResponse("/admin_web", status_code=HTTP_303_SEE_OTHER)
+    async with aiofiles.open(tmp_path, "wb") as f:
+        while chunk := await archive.read(64 * 1024):
+            await f.write(chunk)
+
+    # распаковываем поверх (перезаписывает db.sqlite3 и т.п.)
+    with zipfile.ZipFile(tmp_path, "r") as zf:
+        for member in zf.infolist():
+            target = os.path.normpath(os.path.join(".", member.filename))
+            # безопасность: разрешаем только uploads/*
+            if not target.startswith(("uploads", "./uploads")):
+                continue
+            zf.extract(member, ".")
+
+    try:
+        os.remove(tmp_path)
+    except Exception:
+        pass
+
+    return RedirectResponse(
+        "/admin_web?restore=ok",
+        status_code=HTTP_303_SEE_OTHER,
+    )
 
     # ---------- Health ----------
     @app.api_route("/health", methods=["GET", "HEAD"])
