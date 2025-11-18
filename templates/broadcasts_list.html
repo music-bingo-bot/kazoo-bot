@@ -71,7 +71,7 @@
 
   {% if sent or failed %}
     <div class="msg">
-      Отправлено: {{ sent or 0 }} &nbsp;·&nbsp; Ошибок: {{ failed or 0 }}
+      Отправлено: {{ sent or 0 }} · Ошибок: {{ failed or 0 }}
     </div>
   {% endif %}
 
@@ -88,8 +88,6 @@
       {% set text = b[1] or "" %}
       {% set created_at = b[2] %}
       {% set sent_at = b[3] %}
-
-      {# короткий превью-заголовок — первые 60 символов #}
       {% set preview = text[:60] %}
       <tr>
         <td>#{{ id }}</td>
