@@ -32,6 +32,12 @@
     .btn:first-child { margin-left: 0; }
     .btn:hover { background: #005a85; }
 
+    .btn-small {
+      padding: 4px 10px;
+      font-size: 12px;
+      margin-left: 0;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -105,7 +111,13 @@
             ⏳ Создана
           {% endif %}
         </td>
-        <td class="muted">—</td>
+        <td>
+          <form method="post"
+                action="/admin_web/broadcasts/{{ id }}/delete"
+                onsubmit="return confirm('Удалить рассылку #{{ id }}?');">
+            <button type="submit" class="btn btn-small">Удалить</button>
+          </form>
+        </td>
       </tr>
     {% endfor %}
   </table>
