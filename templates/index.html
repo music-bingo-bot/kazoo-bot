@@ -4,31 +4,179 @@
   <meta charset="utf-8">
   <title>Админка — Треки</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: system-ui, Arial; padding: 24px; max-width: 960px; margin: 0 auto; }
-    h1 { margin-top: 0; }
-    a { text-decoration: none; color: #0067b8; }
-    a:hover { text-decoration: underline; }
-    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    .tracks { margin-top: 24px; border-top: 1px solid #eee; }
-    .row { display: grid; grid-template-columns: 50px 1fr 80px 200px 140px; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f1f1f1; align-items: center; }
-    .row.head { font-weight: 600; background: #fafafa; }
-    form.inline { display: contents; }
-    input[type="text"], input[type="number"], textarea { width: 100%; padding: 6px 8px; font-size: 13px; box-sizing: border-box; }
-    textarea { min-height: 48px; resize: vertical; }
-    button { padding: 6px 10px; font-size: 13px; cursor: pointer; }
-    .muted { color: #777; font-size: 12px; }
-    .actions { display: flex; gap: 6px; }
-  </style>
+ <style>
+    body {
+        font-family: system-ui, Arial;
+        padding: 24px;
+        max-width: 960px;
+        margin: 0 auto;
+    }
+
+    h1 {
+        margin-top: 0;
+    }
+
+    a {
+        text-decoration: none;
+        color: #0067b8;
+    }
+
+    a:hover {
+        text-decoration: underline;
+    }
+
+    /* Верхняя панель */
+    .top-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    /* === УВЕДОМЛЕНИЯ === */
+    .notice {
+        padding: 10px 14px;
+        margin-bottom: 16px;
+        border-radius: 4px;
+        font-size: 14px;
+    }
+
+    .notice-ok {
+        background: #e6ffed;
+        border: 1px solid #b2f2bb;
+        color: #0b8a2e;
+    }
+
+    .notice-error {
+        background: #fff5f5;
+        border: 1px solid #ffc9c9;
+        color: #c92a2a;
+    }
+
+    /* === БЛОК ИНСТРУМЕНТОВ === */
+    .tools {
+        margin: 10px 0 24px 0;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .btn,
+    .inline-form button {
+        display: inline-block;
+        padding: 8px 14px;
+        background: #007cba;
+        color: #fff !important;
+        border-radius: 4px;
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .btn:hover,
+    .inline-form button:hover {
+        background: #005a85;
+    }
+
+    .inline-form input[type="file"] {
+        padding: 6px 8px;
+        font-size: 13px;
+    }
+
+    .inline-form {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    /* === ТАБЛИЦА ТРЕКОВ === */
+    .tracks {
+        margin-top: 24px;
+        border-top: 1px solid #eee;
+    }
+
+    .row {
+        display: grid;
+        grid-template-columns: 50px 1fr 80px 200px 140px;
+        gap: 8px;
+        padding: 8px 0;
+        border-bottom: 1px solid #f1f1f1;
+        align-items: center;
+    }
+
+    .row.head {
+        font-weight: 600;
+        background: #fafafa;
+    }
+
+    form.inline {
+        display: contents;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    textarea {
+        width: 100%;
+        padding: 6px 8px;
+        font-size: 13px;
+        box-sizing: border-box;
+    }
+
+    textarea {
+        min-height: 48px;
+        resize: vertical;
+    }
+
+    button {
+        padding: 6px 10px;
+        font-size: 13px;
+        cursor: pointer;
+    }
+
+    .muted {
+        color: #777;
+        font-size: 12px;
+    }
+
+    .actions {
+        display: flex;
+        gap: 6px;
+    }
+</style>
+
 </head>
 <body>
   <div class="top-bar">
-    <h1>Треки для игры</h1>
+    <h1>🎵 КАЗУ — треки</h1>
     <div>
       <a href="/admin_web/broadcasts">Рассылки</a> |
-      <a href="/admin_web/backup">Скачать бэкап</a> |
       <a href="/admin_web/logout">Выйти</a>
     </div>
+  </div>
+
+  {% if restore_status == "ok" %}
+    <div class="notice notice-ok">
+      ✅ Бэкап успешно восстановлен.
+    </div>
+  {% elif restore_status == "missing" %}
+    <div class="notice notice-error">
+      ⚠️ Не выбран файл архива для восстановления.
+    </div>
+  {% endif %}
+
+  <div class="tools">
+    <a class="btn" href="/admin_web/backup">💾 Скачать бэкап</a>
+
+    <form class="inline-form"
+          action="/admin_web/restore"
+          method="post"
+          enctype="multipart/form-data"
+          onsubmit="return confirm('Перезаписать базу и файлы из архива?');">
+      <input type="file" name="archive" accept=".zip" required>
+      <button type="submit">🔄 Восстановить из архива</button>
+    </form>
   </div>
 
   <h2>Добавить трек</h2>
