@@ -300,12 +300,19 @@ def create_app(bot: Bot) -> FastAPI:
                 user_failed = True
 
             # 2) видео
-            for p in video_paths:
+        for p in video_paths:
+            try:
+                # пробуем отправить как видео
+                await bot.send_video(uid, FSInputFile(p))
+            except Exception as e:
+                # если не получилось (формат/кодек/размер) — пробуем как документ
+                print(f"[broadcast] video error for {uid}, fallback to document: {e}")
                 try:
-                    await bot.send_video(uid, FSInputFile(p))
-                except Exception as e:
-                    print(f"[broadcast] video error for {uid}: {e}")
+                    await bot.send_document(uid, FSInputFile(p))
+                except Exception as e2:
+                    print(f"[broadcast] video-document error for {uid}: {e2}")
                     user_failed = True
+
 
             # 3) файлы (аудио/доки)
             for p in file_paths:
