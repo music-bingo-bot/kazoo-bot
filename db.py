@@ -24,6 +24,13 @@ CREATE TABLE IF NOT EXISTS tracks (
     created_at INTEGER NOT NULL
 );
 
+-- какие треки уже показывались конкретному пользователю
+CREATE TABLE IF NOT EXISTS used_tracks (
+    user_id  INTEGER NOT NULL,
+    track_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, track_id)
+);
+
 CREATE TABLE IF NOT EXISTS broadcasts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     text       TEXT NOT NULL,
@@ -129,6 +136,7 @@ async def delete_track(track_id: int) -> None:
         await db.commit()
 
 
+# старый рандом можно оставить, но бот им больше пользоваться не будет
 async def get_random_track() -> Optional[Tuple]:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
@@ -137,6 +145,49 @@ async def get_random_track() -> Optional[Tuple]:
         )
         row = await cur.fetchone()
     return row
+
+
+# ---------- Tracks per user (no repeats) ----------
+
+async def get_random_track_for_user(user_id: int) -> Optional[Tuple]:
+    """
+    Выбираем случайный активный трек,
+    который еще не показывали этому пользователю.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """
+            SELECT id, title, points, hint, is_active, created_at
+            FROM tracks
+            WHERE is_active = 1
+              AND id NOT IN (
+                  SELECT track_id FROM used_tracks WHERE user_id = ?
+              )
+            ORDER BY RANDOM()
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        row = await cur.fetchone()
+    return row
+
+
+async def mark_track_used(user_id: int, track_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT OR IGNORE INTO used_tracks (user_id, track_id)
+            VALUES (?, ?)
+            """,
+            (user_id, track_id),
+        )
+        await db.commit()
+
+
+async def clear_used_tracks(user_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM used_tracks WHERE user_id = ?", (user_id,))
+        await db.commit()
 
 
 # ---------- Broadcasts ----------
