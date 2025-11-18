@@ -271,8 +271,9 @@ def create_app(bot: Bot) -> FastAPI:
 
         for uid in users:
             user_failed = False
+            caption_used = False  # уже прикрепляли текст как caption?
 
-            # 1) текст / фото
+            # 1) Картинки — как и было: текст в подписи к первой
             try:
                 if image_paths:
                     if len(image_paths) == 1:
@@ -281,10 +282,14 @@ def create_app(bot: Bot) -> FastAPI:
                             FSInputFile(image_paths[0]),
                             caption=full_text or None,
                         )
+                        if full_text:
+                            caption_used = True
                     else:
                         media = []
                         for i, p in enumerate(image_paths):
-                            cap = full_text if i == 0 else None
+                            cap = full_text if i == 0 and full_text else None
+                            if cap:
+                                caption_used = True
                             media.append(
                                 InputMediaPhoto(
                                     media=FSInputFile(p),
@@ -292,38 +297,52 @@ def create_app(bot: Bot) -> FastAPI:
                                 )
                             )
                         await bot.send_media_group(uid, media)
-                else:
-                    if full_text:
-                        await bot.send_message(uid, full_text)
+
             except Exception as e:
                 print(f"[broadcast] photo/text error for {uid}: {e}")
                 user_failed = True
 
-            # 2) видео
-        for p in video_paths:
-            try:
-                # пробуем отправить как видео
-                await bot.send_video(uid, FSInputFile(p))
-            except Exception as e:
-                # если не получилось (формат/кодек/размер) — пробуем как документ
-                print(f"[broadcast] video error for {uid}, fallback to document: {e}")
+            # 2) Видео — если нет картинок, текст идёт как подпись к первому видео
+            for i, p in enumerate(video_paths):
+                cap = None
+                if full_text and not caption_used and i == 0:
+                    cap = full_text
+                    caption_used = True
                 try:
-                    await bot.send_document(uid, FSInputFile(p))
-                except Exception as e2:
-                    print(f"[broadcast] video-document error for {uid}: {e2}")
-                    user_failed = True
+                    await bot.send_video(uid, FSInputFile(p), caption=cap)
+                except Exception as e:
+                    # fallback: пробуем как документ (вдруг слишком большой/нестандартный контейнер)
+                    print(f"[broadcast] video error for {uid}, fallback to document: {e}")
+                    try:
+                        await bot.send_document(uid, FSInputFile(p), caption=cap)
+                    except Exception as e2:
+                        print(f"[broadcast] video-document error for {uid}: {e2}")
+                        user_failed = True
 
+            # 3) Файлы (аудио/доки) — если нет ни картинок, ни видео, текст идёт в подписи к первому файлу
+            audio_exts = {".mp3", ".ogg", ".wav", ".m4a"}
+            for i, p in enumerate(file_paths):
+                cap = None
+                if full_text and not caption_used and i == 0:
+                    cap = full_text
+                    caption_used = True
 
-            # 3) файлы (аудио/доки)
-            for p in file_paths:
+                ext = os.path.splitext(p)[1].lower()
                 try:
-                    ext = os.path.splitext(p)[1].lower()
-                    if ext in {".mp3", ".ogg", ".wav", ".m4a"}:
-                        await bot.send_audio(uid, FSInputFile(p))
+                    if ext in audio_exts:
+                        await bot.send_audio(uid, FSInputFile(p), caption=cap)
                     else:
-                        await bot.send_document(uid, FSInputFile(p))
+                        await bot.send_document(uid, FSInputFile(p), caption=cap)
                 except Exception as e:
                     print(f"[broadcast] file error for {uid}: {e}")
+                    user_failed = True
+
+            # 4) Если ни одной медиа не было вообще — отправляем просто текст
+            if not caption_used and not (image_paths or video_paths or file_paths) and full_text:
+                try:
+                    await bot.send_message(uid, full_text)
+                except Exception as e:
+                    print(f"[broadcast] text-only error for {uid}: {e}")
                     user_failed = True
 
             if user_failed:
