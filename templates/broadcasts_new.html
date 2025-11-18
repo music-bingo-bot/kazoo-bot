@@ -9,26 +9,95 @@
     h1 { margin-top: 0; }
     a { text-decoration: none; color: #0067b8; }
     a:hover { text-decoration: underline; }
-    textarea { width: 100%; min-height: 160px; padding: 8px 10px; font-size: 14px; box-sizing: border-box; }
-    button { padding: 8px 14px; font-size: 14px; cursor: pointer; }
-    .error { color: #b00; margin-bottom: 12px; }
+
+    .btn {
+      display: inline-block;
+      padding: 8px 14px;
+      background: #007cba;
+      color: #fff !important;
+      border-radius: 4px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn:hover { background: #005a85; }
+
+    textarea, input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+    }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .error {
+      color: #b00;
+      margin-bottom: 12px;
+    }
+
+    .field-label {
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .field-block {
+      margin-bottom: 16px;
+    }
+
+    input[type="file"] {
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
-  <p><a href="/admin_web/broadcasts">&larr; К рассылкам</a></p>
-  <h1>Новая рассылка</h1>
+  <div class="top-bar">
+    <h1>📣 Новая рассылка</h1>
+    <a class="btn" href="/admin_web/broadcasts">← Список рассылок</a>
+  </div>
 
   {% if error %}
     <div class="error">{{ error }}</div>
   {% endif %}
 
-  <form method="post">
-    <p>
-      <label>Текст сообщения (Markdown разрешён)<br>
-        <textarea name="text" required></textarea>
-      </label>
-    </p>
-    <button type="submit">Отправить всем пользователям</button>
+  <form method="post" enctype="multipart/form-data">
+    <div class="field-block">
+      <label class="field-label">Заголовок</label>
+      <input type="text" name="title" placeholder="Например: Новые треки для игры">
+    </div>
+
+    <div class="field-block">
+      <label class="field-label">Текст рассылки</label>
+      <textarea name="text" placeholder="Основной текст сообщения. Можно использовать переносы строк."></textarea>
+    </div>
+
+    <div class="field-block">
+      <label class="field-label">Картинки (несколько)</label>
+      <input type="file" name="images" multiple accept="image/*">
+    </div>
+
+    <div class="field-block">
+      <label class="field-label">Видео (несколько)</label>
+      <input type="file" name="videos" multiple accept="video/*">
+    </div>
+
+    <div class="field-block">
+      <label class="field-label">Доп. файлы (аудио/док)</label>
+      <input type="file" name="files" multiple>
+    </div>
+
+    <button class="btn" type="submit">Отправить всем пользователям</button>
   </form>
 </body>
 </html>
