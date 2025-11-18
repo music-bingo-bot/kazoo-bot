@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Админка — Треки</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: system-ui, Arial; padding: 24px; max-width: 960px; margin: 0 auto; }
+    h1 { margin-top: 0; }
+    a { text-decoration: none; color: #0067b8; }
+    a:hover { text-decoration: underline; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .tracks { margin-top: 24px; border-top: 1px solid #eee; }
+    .row { display: grid; grid-template-columns: 50px 1fr 80px 200px 140px; gap: 8px; padding: 8px 0; border-bottom: 1px solid #f1f1f1; align-items: center; }
+    .row.head { font-weight: 600; background: #fafafa; }
+    form.inline { display: contents; }
+    input[type="text"], input[type="number"], textarea { width: 100%; padding: 6px 8px; font-size: 13px; box-sizing: border-box; }
+    textarea { min-height: 48px; resize: vertical; }
+    button { padding: 6px 10px; font-size: 13px; cursor: pointer; }
+    .muted { color: #777; font-size: 12px; }
+    .actions { display: flex; gap: 6px; }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <h1>Треки для игры</h1>
+    <div>
+      <a href="/admin_web/broadcasts">Рассылки</a> |
+      <a href="/admin_web/backup">Скачать бэкап</a> |
+      <a href="/admin_web/logout">Выйти</a>
+    </div>
+  </div>
+
+  <h2>Добавить трек</h2>
+  <form action="/admin_web/tracks/new" method="post">
+    <p>
+      <label>Исполнитель — Название песни<br>
+        <input type="text" name="title" required placeholder="Комбинация — Russian Girl">
+      </label>
+    </p>
+    <p>
+      <label>Баллы<br>
+        <input type="number" name="points" value="2" min="1">
+      </label>
+    </p>
+    <p>
+      <label>Подсказка (будет скрыта спойлером в Telegram)<br>
+        <textarea name="hint" placeholder="Например, «Российская поп-группа конца 80-х»"></textarea>
+      </label>
+    </p>
+    <button type="submit">Добавить трек</button>
+  </form>
+
+  <h2>Список треков</h2>
+  <div class="tracks">
+    <div class="row head">
+      <div>ID</div>
+      <div>Трек</div>
+      <div>Баллы</div>
+      <div>Подсказка / Статус</div>
+      <div>Действия</div>
+    </div>
+
+    {% for t in tracks %}
+      {% set id = t[0] %}
+      {% set title = t[1] %}
+      {% set points = t[2] %}
+      {% set hint = t[3] %}
+      {% set is_active = t[4] %}
+      <div class="row">
+        <div>#{{ id }}</div>
+        <form class="inline" action="/admin_web/tracks/{{ id }}/edit" method="post">
+          <div>
+            <input type="text" name="title" value="{{ title }}">
+          </div>
+          <div>
+            <input type="number" name="points" value="{{ points }}" min="1">
+          </div>
+          <div>
+            <textarea name="hint">{{ hint or "" }}</textarea>
+            <div class="muted">
+              <label>
+                <input type="checkbox" name="is_active" value="1" {% if is_active %}checked{% endif %}>
+                активен
+              </label>
+            </div>
+          </div>
+          <div class="actions">
+            <button type="submit">Сохранить</button>
+          </div>
+        </form>
+        <form class="inline" action="/admin_web/tracks/{{ id }}/delete" method="post"
+              onsubmit="return confirm('Удалить трек #{{ id }}?');">
+          <div></div><div></div><div></div>
+          <div class="actions">
+            <button type="submit">Удалить</button>
+          </div>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+</body>
+</html>
