@@ -30,6 +30,15 @@ CREATE TABLE IF NOT EXISTS broadcasts (
     created_at INTEGER NOT NULL,
     sent_at    INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS broadcast_files (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    broadcast_id INTEGER NOT NULL,
+    kind         TEXT NOT NULL, -- photo / video / file
+    path         TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    FOREIGN KEY (broadcast_id) REFERENCES broadcasts(id) ON DELETE CASCADE
+);
 """
 
 
@@ -40,6 +49,7 @@ async def init_db() -> None:
 
 
 # ---------- Users ----------
+
 async def add_user(user_id: int, username: Optional[str]) -> None:
     now = int(time.time())
     async with aiosqlite.connect(DB_PATH) as db:
@@ -63,6 +73,7 @@ async def get_all_users() -> List[int]:
 
 
 # ---------- Tracks ----------
+
 async def create_track(title: str, points: int, hint: Optional[str]) -> int:
     now = int(time.time())
     async with aiosqlite.connect(DB_PATH) as db:
@@ -129,6 +140,7 @@ async def get_random_track() -> Optional[Tuple]:
 
 
 # ---------- Broadcasts ----------
+
 async def create_broadcast(text: str) -> int:
     now = int(time.time())
     async with aiosqlite.connect(DB_PATH) as db:
@@ -155,6 +167,36 @@ async def list_broadcasts() -> List[Tuple]:
         cur = await db.execute(
             "SELECT id, text, created_at, sent_at "
             "FROM broadcasts ORDER BY COALESCE(sent_at, created_at) DESC"
+        )
+        rows = await cur.fetchall()
+    return rows
+
+
+# ---------- Broadcast media ----------
+
+async def create_broadcast_file(
+    broadcast_id: int,
+    kind: str,
+    path: str,
+) -> int:
+    now = int(time.time())
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "INSERT INTO broadcast_files (broadcast_id, kind, path, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (broadcast_id, kind, path, now),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def get_broadcast_files(broadcast_id: int) -> List[Tuple]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            "SELECT id, kind, path, created_at "
+            "FROM broadcast_files WHERE broadcast_id = ? "
+            "ORDER BY id ASC",
+            (broadcast_id,),
         )
         rows = await cur.fetchall()
     return rows
