@@ -3,6 +3,13 @@ import logging
 import os
 import traceback
 import html
+POINT_EMOJIS = {
+    1: "1️⃣",
+    2: "2️⃣",
+    3: "3️⃣",
+    4: "4️⃣",
+    5: "5️⃣",
+}
 
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, Router, F
@@ -91,26 +98,29 @@ async def _send_random_track(message: Message):
 
     _id, title, points, hint, is_active, created_at = track
 
-    # на всякий случай экранируем спецсимволы, чтобы не ломали HTML
+    # экранируем спецсимволы, чтобы не ломали HTML
     title_safe = html.escape(title)
     hint_safe = html.escape(hint) if hint else ""
+
+    # эмодзи для количества баллов
+    points_emoji = POINT_EMOJIS.get(points, str(points))
 
     if hint_safe:
         text = (
             f"🎵 <b>{title_safe}</b>\n\n"
-            f"Количество баллов: <b>{points}</b>\n\n"
-            f"Подсказка: <span class=\"tg-spoiler\">{hint_safe}</span>"
+            f"Количество баллов: <b>{points_emoji}</b>\n\n"
+            f"💬 Подсказка: <span class=\"tg-spoiler\">{hint_safe}</span>"
         )
     else:
         text = (
             f"🎵 <b>{title_safe}</b>\n\n"
-            f"Количество баллов: <b>{points}</b>"
+            f"Количество баллов: <b>{points_emoji}</b>"
         )
 
     await message.answer(
         text,
         reply_markup=game_keyboard(),
-        parse_mode="HTML",  # ВАЖНО: принудительно включаем HTML
+        parse_mode="HTML",  # принудительно включаем HTML
     )
 
 
