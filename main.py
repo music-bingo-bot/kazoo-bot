@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import traceback
+import html
 
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, Router, F
@@ -90,21 +91,27 @@ async def _send_random_track(message: Message):
 
     _id, title, points, hint, is_active, created_at = track
 
-    lines = [title]
-    if points:
-        lines.append(f"{points} балл(а/ов)")
-    if hint:
-        lines.append("")
-        # Подсказка скрыта спойлером
-        lines.append(f"||{hint}||")
+    # на всякий случай экранируем спецсимволы, чтобы не ломали HTML
+    title_safe = html.escape(title)
+    hint_safe = html.escape(hint) if hint else ""
 
-    text = (
-        f"🎵 <b>{title}</b>\n\n"
-        f"Количество баллов: <b>{points}</b>\n\n"
-        f"Подсказка: <span class=\"tg-spoiler\">{hint}</span>"
+    if hint_safe:
+        text = (
+            f"🎵 <b>{title_safe}</b>\n\n"
+            f"Количество баллов: <b>{points}</b>\n\n"
+            f"Подсказка: <span class=\"tg-spoiler\">{hint_safe}</span>"
+        )
+    else:
+        text = (
+            f"🎵 <b>{title_safe}</b>\n\n"
+            f"Количество баллов: <b>{points}</b>"
+        )
+
+    await message.answer(
+        text,
+        reply_markup=game_keyboard(),
+        parse_mode="HTML",  # ВАЖНО: принудительно включаем HTML
     )
-
-    await message.answer(text, reply_markup=game_keyboard())
 
 
 @router.message(CommandStart())
