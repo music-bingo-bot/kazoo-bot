@@ -1,9 +1,9 @@
 import os
 import tempfile
 import zipfile
-from typing import Optional
+from typing import Optional, List
 
-from fastapi import FastAPI, Request, UploadFile, Form
+from fastapi import FastAPI, Request, UploadFile, Form, File
 from fastapi.responses import (
     HTMLResponse,
     RedirectResponse,
@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.status import HTTP_303_SEE_OTHER
 from aiogram import Bot
+from aiogram.types import FSInputFile, InputMediaPhoto
 
 from db import (
     list_tracks,
@@ -25,6 +26,8 @@ from db import (
     mark_broadcast_sent,
     get_all_users,
     get_track,
+    create_broadcast_file,
+    get_broadcast_files,
 )
 
 TEMPLATES = Jinja2Templates(directory="templates")
@@ -170,15 +173,67 @@ def create_app(bot: Bot) -> FastAPI:
             {"request": request, "error": None},
         )
 
+    async def _save_files_for_broadcast(
+        broadcast_id: int,
+        files: List[UploadFile],
+        kind: str,
+    ) -> List[str]:
+        """
+        Сохраняем загруженные файлы на диск и регистрируем в БД.
+        kind: photo / video / file
+        """
+        saved_paths: List[str] = []
+        base_dir = os.path.join("uploads", "broadcasts", str(broadcast_id), kind)
+        os.makedirs(base_dir, exist_ok=True)
+
+        for up in files:
+            if not up or not up.filename:
+                continue
+            data = await up.read()
+            if not data:
+                continue
+
+            # Простое уникальное имя
+            filename = up.filename.replace("/", "_").replace("\\", "_")
+            path = os.path.join(base_dir, filename)
+            with open(path, "wb") as f:
+                f.write(data)
+
+            rel_path = path  # храним относительный путь от корня проекта
+            await create_broadcast_file(broadcast_id, kind, rel_path)
+            saved_paths.append(rel_path)
+
+        return saved_paths
+
     @app.post("/admin_web/broadcasts/new", response_class=HTMLResponse)
-    async def broadcasts_new_submit(request: Request, text: str = Form(...)):
+    async def broadcasts_new_submit(
+        request: Request,
+        title: str = Form(""),
+        text: str = Form(""),
+        images: List[UploadFile] = File(default=[]),
+        videos: List[UploadFile] = File(default=[]),
+        files: List[UploadFile] = File(default=[]),
+    ):
         await ensure_admin(request)
-        text = text.strip()
-        if not text:
+
+        title = title.strip()
+        body = text.strip()
+
+        has_any_media = any(
+            (images and len(images) > 0, videos and len(videos) > 0, files and len(files) > 0)
+        )
+
+        if not title and not body and not has_any_media:
             return TEMPLATES.TemplateResponse(
                 "broadcasts_new.html",
-                {"request": request, "error": "Текст сообщения пустой"},
+                {"request": request, "error": "Нужно заполнить заголовок/текст или добавить медиа"},
             )
+
+        # Текст, который уйдет пользователям
+        if title and body:
+            full_text = f"{title}\n\n{text}".strip()
+        else:
+            full_text = (title or body).strip()
 
         bot: Bot = request.app.state.bot
         users = await get_all_users()
@@ -188,13 +243,55 @@ def create_app(bot: Bot) -> FastAPI:
                 {"request": request, "error": "Нет пользователей для рассылки"},
             )
 
-        bid = await create_broadcast(text)
+        # Создаем запись о рассылке
+        bid = await create_broadcast(full_text)
+
+        # Сохраняем файлы
+        image_paths = await _save_files_for_broadcast(bid, images, "photo") if images else []
+        video_paths = await _save_files_for_broadcast(bid, videos, "video") if videos else []
+        file_paths = await _save_files_for_broadcast(bid, files, "file") if files else []
+
         sent = 0
         failed = 0
 
         for uid in users:
             try:
-                await bot.send_message(uid, text)
+                # 1) Фото (если есть)
+                if image_paths:
+                    if len(image_paths) == 1:
+                        await bot.send_photo(
+                            uid,
+                            FSInputFile(image_paths[0]),
+                            caption=full_text or None,
+                        )
+                    else:
+                        media = []
+                        for i, p in enumerate(image_paths):
+                            cap = full_text if i == 0 else None
+                            media.append(
+                                InputMediaPhoto(
+                                    media=FSInputFile(p),
+                                    caption=cap,
+                                )
+                            )
+                        await bot.send_media_group(uid, media)
+                else:
+                    # Если фото нет, просто текст
+                    if full_text:
+                        await bot.send_message(uid, full_text)
+
+                # 2) Видео
+                for p in video_paths:
+                    await bot.send_video(uid, FSInputFile(p))
+
+                # 3) Доп. файлы (аудио / документы)
+                for p in file_paths:
+                    ext = os.path.splitext(p)[1].lower()
+                    if ext in {".mp3", ".ogg", ".wav", ".m4a"}:
+                        await bot.send_audio(uid, FSInputFile(p))
+                    else:
+                        await bot.send_document(uid, FSInputFile(p))
+
                 sent += 1
             except Exception:
                 failed += 1
@@ -217,13 +314,11 @@ def create_app(bot: Bot) -> FastAPI:
         fd, tmp_path = tempfile.mkstemp(suffix=".zip")
         os.close(fd)
 
-        # Пишем в архив всю папку uploads (включая db.sqlite3)
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             if os.path.isdir(base):
                 for root_dir, _dirs, files in os.walk(base):
                     for name in files:
                         full = os.path.join(root_dir, name)
-                        # в архиве путь будет начинаться с uploads/...
                         rel = os.path.relpath(full, start=".")
                         zf.write(full, arcname=rel)
 
@@ -246,16 +341,13 @@ def create_app(bot: Bot) -> FastAPI:
         base = "uploads"
         os.makedirs(base, exist_ok=True)
 
-        # Сохраняем загруженный архив во временный файл
         fd, tmp_path = tempfile.mkstemp(suffix=".zip")
         os.close(fd)
         with open(tmp_path, "wb") as f:
             f.write(await archive.read())
 
-        # Распаковываем только uploads/*
         with zipfile.ZipFile(tmp_path, "r") as zf:
             for member in zf.infolist():
-                # безопасный путь
                 member_path = os.path.normpath(member.filename)
                 if not member_path.startswith("uploads"):
                     continue
