@@ -3,13 +3,6 @@ import logging
 import os
 import traceback
 import html
-POINT_EMOJIS = {
-    1: "1️⃣",
-    2: "2️⃣",
-    3: "3️⃣",
-    4: "4️⃣",
-    5: "5️⃣",
-}
 
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, Router, F
@@ -29,6 +22,14 @@ from admin_web import create_app
 import messages as msg
 
 
+# ---------- Emoji for points ----------
+POINT_EMOJIS = {
+    1: "1️⃣",
+    2: "2️⃣",
+    3: "3️⃣",
+}
+
+
 # ---------- ENV ----------
 load_dotenv()
 
@@ -36,7 +37,6 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 if not TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN не задан")
 
-# Можно указать ID админов, если потом решим что-то делать с ними
 ADMIN_IDS = {
     int(x)
     for x in os.getenv("ADMIN_IDS", "").replace(";", ",").split(",")
@@ -86,10 +86,11 @@ def game_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-# ---------- Bot handlers ----------
+# ---------- Router ----------
 router = Router()
 
 
+# ---------- Send Random Track ----------
 async def _send_random_track(message: Message):
     track = await get_random_track()
     if not track:
@@ -98,13 +99,22 @@ async def _send_random_track(message: Message):
 
     _id, title, points, hint, is_active, created_at = track
 
-    # экранируем спецсимволы, чтобы не ломали HTML
+    # Экранируем спецсимволы (для HTML)
     title_safe = html.escape(title)
     hint_safe = html.escape(hint) if hint else ""
 
-    # эмодзи для количества баллов
-    points_emoji = POINT_EMOJIS.get(points, str(points))
+    # Приводим points к int, чтобы получить эмодзи
+    try:
+        points_int = int(points)
+    except (ValueError, TypeError):
+        points_int = None
 
+    if points_int in POINT_EMOJIS:
+        points_emoji = POINT_EMOJIS[points_int]
+    else:
+        points_emoji = str(points)
+
+    # Формируем текст сообщения
     if hint_safe:
         text = (
             f"🎵 <b>{title_safe}</b>\n\n"
@@ -124,6 +134,7 @@ async def _send_random_track(message: Message):
     )
 
 
+# ---------- Handlers ----------
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     await add_user(message.from_user.id, message.from_user.username)
@@ -172,7 +183,7 @@ async def main():
 
     bot = Bot(
         token=TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),  # HTML по умолчанию
     )
     dp = Dispatcher()
     dp.include_router(router)
