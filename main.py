@@ -98,7 +98,12 @@ async def _send_random_track(message: Message):
         # Подсказка скрыта спойлером
         lines.append(f"||{hint}||")
 
-    text = "\n".join(lines)
+    text = (
+        f"🎵 <b>{title}</b>\n\n"
+        f"Количество баллов: <b>{points}</b>\n\n"
+        f"Подсказка: <span class=\"tg-spoiler\">{hint}</span>"
+    )
+
     await message.answer(text, reply_markup=game_keyboard())
 
 
