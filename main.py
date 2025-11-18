@@ -14,6 +14,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    FSInputFile,  # <-- добавили
 )
 import uvicorn
 
@@ -109,7 +110,7 @@ async def _send_random_track(message: Message, user_id: int):
     """
     Отправить случайный трек пользователю:
     - без повторов, пока не закончатся все активные треки;
-    - если треки закончились — показать поздравление и кнопку 'Начнем заново?'.
+    - если треки закончились - показать поздравление и кнопку 'Начнем заново?'.
     """
     track = await get_random_track_for_user(user_id)
     if not track:
@@ -154,7 +155,19 @@ async def _send_random_track(message: Message, user_id: int):
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     await add_user(message.from_user.id, message.from_user.username)
-    await message.answer(msg.START_TEXT, reply_markup=start_keyboard())
+
+    # пробуем отправить приветствие с картинкой
+    try:
+        photo = FSInputFile("kazoo.jpg")  # файл лежит рядом с main.py
+        await message.answer_photo(
+            photo=photo,
+            caption=msg.START_TEXT,
+            reply_markup=start_keyboard(),
+        )
+    except Exception as e:
+        # если что-то пошло не так (нет файла, ошибка пути и т.п.) - просто отправим текст
+        logger.warning("Failed to send welcome photo: %s", e)
+        await message.answer(msg.START_TEXT, reply_markup=start_keyboard())
 
 
 @router.message(Command("help"))
@@ -233,4 +246,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
