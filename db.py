@@ -172,6 +172,12 @@ async def list_broadcasts() -> List[Tuple]:
     return rows
 
 
+async def delete_broadcast(broadcast_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM broadcasts WHERE id = ?", (broadcast_id,))
+        await db.commit()
+
+
 # ---------- Broadcast media ----------
 
 async def create_broadcast_file(
