@@ -17,18 +17,23 @@ from aiogram.types import (
 )
 import uvicorn
 
-from db import init_db, add_user, get_random_track
+from db import (
+    init_db,
+    add_user,
+    get_random_track_for_user,
+    mark_track_used,
+    clear_used_tracks,
+)
 from admin_web import create_app
 import messages as msg
 
-
-# ---------- Emoji for points ----------
 POINT_EMOJIS = {
     1: "1️⃣",
     2: "2️⃣",
     3: "3️⃣",
+    4: "4️⃣",
+    5: "5️⃣",
 }
-
 
 # ---------- ENV ----------
 load_dotenv()
@@ -37,6 +42,7 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 if not TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN не задан")
 
+# Можно указать ID админов, если потом решим что-то делать с ними
 ADMIN_IDS = {
     int(x)
     for x in os.getenv("ADMIN_IDS", "").replace(";", ",").split(",")
@@ -62,7 +68,7 @@ def start_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="🚀 Поехали", callback_data="go"),
+                InlineKeyboardButton(text="▶️ Поехали", callback_data="go"),
                 InlineKeyboardButton(text="❓ Помощь", callback_data="help"),
             ]
         ]
@@ -77,41 +83,58 @@ def game_keyboard() -> InlineKeyboardMarkup:
                     text="⏭️ Следующая песня", callback_data="next"
                 ),
                 InlineKeyboardButton(
-                    text="❌ Начать сначала", callback_data="restart"
+                    text="🔁 Начать сначала", callback_data="restart"
                 ),
             ]
         ]
     )
 
-# ---------- Router ----------
+
+def restart_cycle_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура, когда пользователь прошел все треки."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔁 Начнем заново?", callback_data="restart_all"
+                ),
+            ]
+        ]
+    )
+
+
+# ---------- Bot handlers ----------
 router = Router()
 
 
-# ---------- Send Random Track ----------
-async def _send_random_track(message: Message):
-    track = await get_random_track()
+async def _send_random_track(message: Message, user_id: int):
+    """
+    Отправить случайный трек пользователю:
+    - без повторов, пока не закончатся все активные треки;
+    - если треки закончились — показать поздравление и кнопку 'Начнем заново?'.
+    """
+    track = await get_random_track_for_user(user_id)
     if not track:
-        await message.answer(msg.NO_TRACKS_TEXT)
+        # нет ни одного нового трека для этого пользователя
+        await message.answer(
+            "Поздравляем, вы сыграли все треки! 🎉\n\n"
+            "Нажмите кнопку ниже, чтобы начать заново.",
+            reply_markup=restart_cycle_keyboard(),
+        )
         return
 
     _id, title, points, hint, is_active, created_at = track
 
-    # Экранируем спецсимволы (для HTML)
+    # отмечаем трек как уже показанный этому пользователю
+    await mark_track_used(user_id, _id)
+
+    # экранируем спецсимволы, чтобы не ломали HTML
     title_safe = html.escape(title)
     hint_safe = html.escape(hint) if hint else ""
 
-    # Приводим points к int, чтобы получить эмодзи
-    try:
-        points_int = int(points)
-    except (ValueError, TypeError):
-        points_int = None
+    # эмодзи для количества баллов
+    points_emoji = POINT_EMOJIS.get(points, str(points))
 
-    if points_int in POINT_EMOJIS:
-        points_emoji = POINT_EMOJIS[points_int]
-    else:
-        points_emoji = str(points)
-
-    # Формируем текст сообщения
     if hint_safe:
         text = (
             f"🎵 <b>{title_safe}</b>\n\n"
@@ -131,7 +154,6 @@ async def _send_random_track(message: Message):
     )
 
 
-# ---------- Handlers ----------
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     await add_user(message.from_user.id, message.from_user.username)
@@ -152,11 +174,32 @@ async def cb_help(cb: CallbackQuery):
 @router.callback_query(F.data.in_(["go", "next", "restart"]))
 async def cb_game(cb: CallbackQuery):
     await add_user(cb.from_user.id, cb.from_user.username)
+
+    # Если пользователь нажал "Начать сначала" - очищаем его прогресс
+    if cb.data == "restart":
+        await clear_used_tracks(cb.from_user.id)
+
     try:
-        await _send_random_track(cb.message)
+        await _send_random_track(cb.message, cb.from_user.id)
     except Exception:
         logger.error("Error sending track\n%s", traceback.format_exc())
-        await cb.message.answer("Произошла ошибка, попробуй ещё раз.")
+        await cb.message.answer("Произошла ошибка, попробуй еще раз.")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "restart_all"))
+async def cb_restart_all(cb: CallbackQuery):
+    """
+    Обработчик кнопки 'Начнем заново?' после того,
+    как пользователь прошел все треки.
+    """
+    await add_user(cb.from_user.id, cb.from_user.username)
+    await clear_used_tracks(cb.from_user.id)
+    try:
+        await _send_random_track(cb.message, cb.from_user.id)
+    except Exception:
+        logger.error("Error sending track after restart_all\n%s", traceback.format_exc())
+        await cb.message.answer("Произошла ошибка, попробуй еще раз.")
     await cb.answer()
 
 
@@ -180,7 +223,7 @@ async def main():
 
     bot = Bot(
         token=TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),  # HTML по умолчанию
+        default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN),
     )
     dp = Dispatcher()
     dp.include_router(router)
