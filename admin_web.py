@@ -1,7 +1,7 @@
 import os
 import tempfile
 import zipfile
-from typing import Optional, List, Union
+from typing import Optional, List
 
 from fastapi import FastAPI, Request, UploadFile, Form, File
 from fastapi.responses import (
@@ -28,6 +28,7 @@ from db import (
     get_all_users,
     get_track,
     create_broadcast_file,
+    delete_broadcast,
 )
 
 TEMPLATES = Jinja2Templates(directory="templates")
@@ -41,10 +42,6 @@ def get_admin_password() -> str:
 
 
 async def ensure_admin(request: Request) -> Optional[Response]:
-    """
-    Если админ не залогинен — возвращает RedirectResponse.
-    Если всё ок — возвращает None.
-    """
     if not request.session.get("is_admin"):
         return RedirectResponse("/admin_web/login", status_code=HTTP_303_SEE_OTHER)
     return None
@@ -180,6 +177,14 @@ def create_app(bot: Bot) -> FastAPI:
             },
         )
 
+    @app.post("/admin_web/broadcasts/{broadcast_id}/delete")
+    async def broadcasts_delete(request: Request, broadcast_id: int):
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
+
+        await delete_broadcast(broadcast_id)
+        return RedirectResponse("/admin_web/broadcasts", status_code=HTTP_303_SEE_OTHER)
+
     @app.get("/admin_web/broadcasts/new", response_class=HTMLResponse)
     async def broadcasts_new_form(request: Request):
         if (resp := await ensure_admin(request)) is not None:
@@ -195,10 +200,6 @@ def create_app(bot: Bot) -> FastAPI:
         files: List[UploadFile],
         kind: str,
     ) -> List[str]:
-        """
-        Сохраняем загруженные файлы на диск и регистрируем в БД.
-        kind: photo / video / file
-        """
         saved_paths: List[str] = []
         base_dir = os.path.join("uploads", "broadcasts", str(broadcast_id), kind)
         os.makedirs(base_dir, exist_ok=True)
@@ -246,9 +247,8 @@ def create_app(bot: Bot) -> FastAPI:
                 {"request": request, "error": "Нужно заполнить заголовок/текст или добавить медиа"},
             )
 
-        # Текст, который уйдет пользователям
         if title and body:
-            full_text = f"{title}\n\n{text}".strip()
+            full_text = f"{title}\n\n{body}".strip()
         else:
             full_text = (title or body).strip()
 
@@ -260,10 +260,8 @@ def create_app(bot: Bot) -> FastAPI:
                 {"request": request, "error": "Нет пользователей для рассылки"},
             )
 
-        # Создаем запись о рассылке
         bid = await create_broadcast(full_text)
 
-        # Сохраняем файлы
         image_paths = await _save_files_for_broadcast(bid, images, "photo") if images else []
         video_paths = await _save_files_for_broadcast(bid, videos, "video") if videos else []
         file_paths = await _save_files_for_broadcast(bid, files, "file") if files else []
@@ -272,8 +270,10 @@ def create_app(bot: Bot) -> FastAPI:
         failed = 0
 
         for uid in users:
+            user_failed = False
+
+            # 1) текст / фото
             try:
-                # 1) Фото (если есть)
                 if image_paths:
                     if len(image_paths) == 1:
                         await bot.send_photo(
@@ -295,22 +295,34 @@ def create_app(bot: Bot) -> FastAPI:
                 else:
                     if full_text:
                         await bot.send_message(uid, full_text)
+            except Exception as e:
+                print(f"[broadcast] photo/text error for {uid}: {e}")
+                user_failed = True
 
-                # 2) Видео
-                for p in video_paths:
+            # 2) видео
+            for p in video_paths:
+                try:
                     await bot.send_video(uid, FSInputFile(p))
+                except Exception as e:
+                    print(f"[broadcast] video error for {uid}: {e}")
+                    user_failed = True
 
-                # 3) Доп. файлы (аудио / документы)
-                for p in file_paths:
+            # 3) файлы (аудио/доки)
+            for p in file_paths:
+                try:
                     ext = os.path.splitext(p)[1].lower()
                     if ext in {".mp3", ".ogg", ".wav", ".m4a"}:
                         await bot.send_audio(uid, FSInputFile(p))
                     else:
                         await bot.send_document(uid, FSInputFile(p))
+                except Exception as e:
+                    print(f"[broadcast] file error for {uid}: {e}")
+                    user_failed = True
 
-                sent += 1
-            except Exception:
+            if user_failed:
                 failed += 1
+            else:
+                sent += 1
 
         await mark_broadcast_sent(bid)
         return RedirectResponse(
