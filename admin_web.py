@@ -1,7 +1,7 @@
 import os
 import tempfile
 import zipfile
-from typing import Optional, List
+from typing import Optional, List, Union
 
 from fastapi import FastAPI, Request, UploadFile, Form, File
 from fastapi.responses import (
@@ -9,6 +9,7 @@ from fastapi.responses import (
     RedirectResponse,
     PlainTextResponse,
     FileResponse,
+    Response,
 )
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -27,7 +28,6 @@ from db import (
     get_all_users,
     get_track,
     create_broadcast_file,
-    get_broadcast_files,
 )
 
 TEMPLATES = Jinja2Templates(directory="templates")
@@ -40,9 +40,14 @@ def get_admin_password() -> str:
     return pwd
 
 
-async def ensure_admin(request: Request):
+async def ensure_admin(request: Request) -> Optional[Response]:
+    """
+    Если админ не залогинен — возвращает RedirectResponse.
+    Если всё ок — возвращает None.
+    """
     if not request.session.get("is_admin"):
         return RedirectResponse("/admin_web/login", status_code=HTTP_303_SEE_OTHER)
+    return None
 
 
 def create_app(bot: Bot) -> FastAPI:
@@ -81,7 +86,9 @@ def create_app(bot: Bot) -> FastAPI:
 
     @app.get("/admin_web", response_class=HTMLResponse)
     async def index(request: Request):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
+
         tracks = await list_tracks()
         restore_status = request.query_params.get("restore")
         return TEMPLATES.TemplateResponse(
@@ -100,7 +107,9 @@ def create_app(bot: Bot) -> FastAPI:
         points: int = Form(...),
         hint: Optional[str] = Form(None),
     ):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
+
         title = title.strip()
         if not title:
             return RedirectResponse("/admin_web", status_code=HTTP_303_SEE_OTHER)
@@ -122,7 +131,9 @@ def create_app(bot: Bot) -> FastAPI:
         hint: Optional[str] = Form(None),
         is_active: Optional[str] = Form(None),
     ):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
+
         row = await get_track(track_id)
         if not row:
             return RedirectResponse("/admin_web", status_code=HTTP_303_SEE_OTHER)
@@ -143,7 +154,9 @@ def create_app(bot: Bot) -> FastAPI:
 
     @app.post("/admin_web/tracks/{track_id}/delete")
     async def remove_track(request: Request, track_id: int):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
+
         await delete_track(track_id)
         return RedirectResponse("/admin_web", status_code=HTTP_303_SEE_OTHER)
 
@@ -151,7 +164,9 @@ def create_app(bot: Bot) -> FastAPI:
 
     @app.get("/admin_web/broadcasts", response_class=HTMLResponse)
     async def broadcasts_page(request: Request):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
+
         broadcasts = await list_broadcasts()
         sent = request.query_params.get("sent")
         failed = request.query_params.get("failed")
@@ -167,7 +182,9 @@ def create_app(bot: Bot) -> FastAPI:
 
     @app.get("/admin_web/broadcasts/new", response_class=HTMLResponse)
     async def broadcasts_new_form(request: Request):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
+
         return TEMPLATES.TemplateResponse(
             "broadcasts_new.html",
             {"request": request, "error": None},
@@ -193,13 +210,12 @@ def create_app(bot: Bot) -> FastAPI:
             if not data:
                 continue
 
-            # Простое уникальное имя
             filename = up.filename.replace("/", "_").replace("\\", "_")
             path = os.path.join(base_dir, filename)
             with open(path, "wb") as f:
                 f.write(data)
 
-            rel_path = path  # храним относительный путь от корня проекта
+            rel_path = path
             await create_broadcast_file(broadcast_id, kind, rel_path)
             saved_paths.append(rel_path)
 
@@ -214,7 +230,8 @@ def create_app(bot: Bot) -> FastAPI:
         videos: List[UploadFile] = File(default=[]),
         files: List[UploadFile] = File(default=[]),
     ):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
 
         title = title.strip()
         body = text.strip()
@@ -276,7 +293,6 @@ def create_app(bot: Bot) -> FastAPI:
                             )
                         await bot.send_media_group(uid, media)
                 else:
-                    # Если фото нет, просто текст
                     if full_text:
                         await bot.send_message(uid, full_text)
 
@@ -306,7 +322,8 @@ def create_app(bot: Bot) -> FastAPI:
 
     @app.get("/admin_web/backup")
     async def backup(request: Request):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
 
         base = "uploads"
         os.makedirs(base, exist_ok=True)
@@ -330,7 +347,8 @@ def create_app(bot: Bot) -> FastAPI:
 
     @app.post("/admin_web/restore")
     async def restore(request: Request, archive: UploadFile):
-        await ensure_admin(request)
+        if (resp := await ensure_admin(request)) is not None:
+            return resp
 
         if not archive or not archive.filename:
             return RedirectResponse(
