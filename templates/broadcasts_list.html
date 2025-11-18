@@ -9,25 +9,65 @@
     h1 { margin-top: 0; }
     a { text-decoration: none; color: #0067b8; }
     a:hover { text-decoration: underline; }
-    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-    th, td { border: 1px solid #eee; padding: 8px; text-align: left; vertical-align: top; }
-    th { background: #fafafa; }
+
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 8px 14px;
+      background: #007cba;
+      color: #fff !important;
+      border-radius: 4px;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      margin-left: 8px;
+    }
+    .btn:first-child { margin-left: 0; }
+    .btn:hover { background: #005a85; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+    }
+    th, td {
+      border: 1px solid #eee;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th {
+      background: #fafafa;
+      font-weight: 600;
+    }
     .muted { color: #777; font-size: 12px; }
-    .ok { color: green; }
-    .back { margin-bottom: 16px; }
-    .msg { margin-top: 8px; padding: 8px 10px; background: #f0fff0; border: 1px solid #c0e6c0; }
+
+    .msg {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: #f0fff0;
+      border: 1px solid #c0e6c0;
+      border-radius: 4px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
-  <div class="back">
-    <a href="/admin_web">&larr; К трекам</a>
+  <div class="top-bar">
+    <h1>📣 Рассылки</h1>
+    <div>
+      <a class="btn" href="/admin_web">← К трекам</a>
+      <a class="btn" href="/admin_web/broadcasts/new">+ Новая рассылка</a>
+    </div>
   </div>
-  <h1>Рассылки</h1>
-
-  <p>
-    <a href="/admin_web/broadcasts/new">Создать новую рассылку</a> |
-    <a href="/admin_web/backup">Скачать бэкап</a>
-  </p>
 
   {% if sent or failed %}
     <div class="msg">
@@ -38,26 +78,34 @@
   <table>
     <tr>
       <th>ID</th>
-      <th>Текст</th>
+      <th>Заголовок</th>
       <th>Создана (timestamp)</th>
-      <th>Отправлена (timestamp)</th>
+      <th>Статус</th>
+      <th>Действия</th>
     </tr>
     {% for b in broadcasts %}
       {% set id = b[0] %}
       {% set text = b[1] %}
       {% set created_at = b[2] %}
       {% set sent_at = b[3] %}
+      {% set title = text.split('\n')[0] if text else '' %}
       <tr>
         <td>#{{ id }}</td>
-        <td><pre style="white-space: pre-wrap; margin: 0;">{{ text }}</pre></td>
+        <td>
+          <strong>{{ title }}</strong><br>
+          <span class="muted">
+            {{ text|replace('\n', ' ')[:120] }}{% if text|length > 120 %}…{% endif %}
+          </span>
+        </td>
         <td class="muted">{{ created_at }}</td>
         <td>
           {% if sent_at %}
-            <span class="ok">{{ sent_at }}</span>
+            ✅ Отправлена
           {% else %}
-            <span class="muted">не отправлена</span>
+            ⏳ Создана
           {% endif %}
         </td>
+        <td class="muted">—</td>
       </tr>
     {% endfor %}
   </table>
